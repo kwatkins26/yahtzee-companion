@@ -1,5 +1,7 @@
 # Yahtzee 2001 — Companion Scorecard
 
+**Play it live: https://kwatkins26.github.io/yahtzee-companion/**
+
 A retro Nintendo-2001-inspired web companion for real-life Yahtzee games. Roll the physical dice, tap in the scores, let this app handle the totals, the upper-section bonus, and the joker-yahtzee bonuses.
 
 ## What is this?
