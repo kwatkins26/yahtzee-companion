@@ -31,6 +31,7 @@
   var isHost = false;       // I created the room
   var remoteMode = false;   // currently networked
   var pendingJoin = null;   // deep-link code from #j=...
+  var pendingInput = {};    // preserve text across re-renders (color-dot pick, etc.)
   var authority = function () { return !remoteMode || isHost; };
 
   // ---------- helpers ----------
@@ -360,12 +361,13 @@ function startTurn(from) {
     addname: function () {
       if (!authority()) return;
       var inp = document.getElementById('pname');
-      var name = (inp.value || '').trim();
+      var name = (pendingInput.pname || (inp ? inp.value : '') || '').trim();
       if (!name) { flash('NAME REQUIRED'); return; }
       if (state.players.length >= 12) { flash('MAX 12 PLAYERS'); return; }
       var seat = Profiles.seat(name, PALETTE[state.ui.dot].h);
       state.players.push({ uid: seat.id, name: seat.name, color: seat.color, card: newCard() });
       state.ui.dot = (state.ui.dot + 1) % PALETTE.length;
+      delete pendingInput.pname;
       commit();
     },
 
@@ -387,8 +389,10 @@ function startTurn(from) {
     },
 
     join: function () {
-      var code = (document.getElementById('jcode') || {}).value || (state.ui.pendingCode ? state.ui.pendingCode : '');
-      var name = ((document.getElementById('jname') || { value: '' }).value || '').trim();
+      var jcodeEl = document.getElementById('jcode');
+      var jnameEl = document.getElementById('jname');
+      var code = pendingInput.jcode || (jcodeEl ? jcodeEl.value : '') || (state.ui.pendingCode ? state.ui.pendingCode : '');
+      var name = (pendingInput.jname || (jnameEl ? jnameEl.value : '') || '').trim();
       var prof = Profiles.profile();
       if (name) prof.name = name;
       prof.color = PALETTE[state.ui.dot].h;
@@ -396,6 +400,8 @@ function startTurn(from) {
       Profiles.saveProfile(prof);
       state.ui.joinName = prof.name;
       state.ui.pendingCode = extractRoom(code);
+      delete pendingInput.jcode;
+      delete pendingInput.jname;
       state.phase = 'joining';
       render();
       joinRoom(state.ui.pendingCode);
@@ -424,12 +430,13 @@ function startTurn(from) {
 
     yourename: function () {
       var inp = document.getElementById('you-name');
-      var name = (inp.value || '').trim();
+      var name = (pendingInput['you-name'] || (inp ? inp.value : '') || '').trim();
       if (!name) { flash('NAME REQUIRED'); return; }
       if (remoteMode && !isHost) { send({ t: 'rename', name: name }); return; }
       if (authority() && selfIndex >= 0) {
         state.players[selfIndex].name = name;
         var pf = Profiles.profile(); pf.name = name; Profiles.saveProfile(pf);
+        delete pendingInput['you-name'];
         commit();
       }
     },
@@ -655,7 +662,10 @@ function startTurn(from) {
   }
 
   function inviteLink() {
-    return baseHref() + '#j=' + encodeURIComponent(myPeerId);
+    var code = encodeURIComponent(myPeerId);
+    // The fragment is canonical, but some chat apps strip #… when they forward
+    // a link. Carrying the code in the query too means the tap still lands.
+    return baseHref() + '?j=' + code + '#j=' + code;
   }
 
   // Be kind: if someone pastes a full invite URL into the code box, fish the
@@ -687,8 +697,8 @@ function startTurn(from) {
   function joinBox() {
     var prof = Profiles.profile();
     return '<div class="plate room-box"><div class="section-bar">Join A Room</div>' +
-      '<div class="join-row"><input id="jcode" class="text-input" placeholder="Paste invite code" value="' + esc(state.ui.pendingCode || '') + '" autocomplete="off"></div>' +
-      '<div class="join-row" style="margin-top:8px"><input id="jname" class="text-input" placeholder="Your name (their scoreboard)" maxlength="20" value="' + esc(prof.name || '') + '" autocomplete="off"></div>' +
+      '<div class="join-row"><input id="jcode" class="text-input" placeholder="Paste invite code" value="' + esc(pendingInput.jcode || state.ui.pendingCode || '') + '" autocomplete="off"></div>' +
+      '<div class="join-row" style="margin-top:8px"><input id="jname" class="text-input" placeholder="Your name (their scoreboard)" maxlength="20" value="' + esc(pendingInput.jname || prof.name || '') + '" autocomplete="off"></div>' +
       '<div class="color-row">' + colorDots() + '</div>' +
       '<div id="errmsg" class="error-msg" role="alert"></div>' +
       '<button type="button" class="btn btn-signal btn-block" data-action="join">Join The Room</button></div>';
@@ -715,7 +725,7 @@ function startTurn(from) {
         '" aria-label="Your color ' + PALETTE[i].n + '" style="background:' + PALETTE[i].h + '"></button>';
     }
     return '<div class="plate you-bar"><div class="section-bar">Your Seat</div>' +
-      '<div class="join-row"><input id="you-name" class="text-input" maxlength="20" value="' + esc(me.name) + '" autocomplete="off"></div>' +
+      '<div class="join-row"><input id="you-name" class="text-input" maxlength="20" value="' + esc(pendingInput['you-name'] || me.name) + '" autocomplete="off"></div>' +
       '<div class="color-row">' + dots + '</div>' +
       '<button type="button" class="btn btn-amber btn-block" data-action="yourename">Save Name &amp; Color</button>' +
       '<p class="room-hint">Saves to everyone at the table and sticks for your next game.</p></div>';
@@ -744,7 +754,7 @@ function startTurn(from) {
   function setup() {
     var localCrew = '';
     if (authority()) {
-      localCrew = '<div class="name-field"><input id="pname" class="text-input" maxlength="20" placeholder="Player name" autocomplete="off"></div>' +
+      localCrew = '<div class="name-field"><input id="pname" class="text-input" maxlength="20" placeholder="Player name" value="' + esc(pendingInput.pname || '') + '" autocomplete="off"></div>' +
         '<div class="color-row">' + colorDots() + '</div>' +
         '<button type="button" class="btn btn-amber btn-block" data-action="addname">Add Player</button>';
     }
@@ -896,10 +906,12 @@ function startTurn(from) {
   }
 
   function init() {
-    var hash = '';
-    try { hash = window.location.hash || ''; } catch (e) {}
-    var jm = hash.match(/#j=([^&]+)/);
-    if (jm) pendingJoin = decodeURIComponent(jm[1]);
+    var raw = '';
+    try { raw = (window.location.search || '') + (window.location.hash || ''); } catch (e) {}
+    var jm = raw.match(/#j=([^&\s?#]+)/) || raw.match(/[?&]j=([^&\s?#]+)/);
+    if (jm) {
+      try { pendingJoin = decodeURIComponent(jm[1]); } catch (e2) { pendingJoin = jm[1]; }
+    }
     selfIndex = -1;
 
     // every device has a persistent identity — seeded with a friendly nickname
@@ -933,6 +945,11 @@ function startTurn(from) {
     if (!fn) return;
     ev.preventDefault();
     fn.call(el, ev);
+  });
+
+  document.getElementById('app').addEventListener('input', function (ev) {
+    var id = ev.target && ev.target.id;
+    if (id && ev.target.classList.contains('text-input')) pendingInput[id] = ev.target.value;
   });
 
   // ---------- init ----------

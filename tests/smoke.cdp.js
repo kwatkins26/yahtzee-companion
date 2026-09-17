@@ -4,10 +4,11 @@
 // and the persistent Hall stats across two finished games.
 const { spawn } = require('child_process');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = 9233;
+const PORT = 9233 + Math.floor(Math.random() * 400);
 // Served over http so the host's share cluster (invite link + QR) is live —
 // from file:// the room can't produce a shareable address by design.
-const PAGE = 'http://localhost:8000/';
+// Point PAGE at the deployed site to exercise a real public invite.
+const PAGE = process.env.YAHTZEE_PAGE || 'http://localhost:8000/';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -57,7 +58,7 @@ async function main() {
   for (let i = 0; i < 60 && !hostTarget; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
-      hostTarget = list.find((t) => t.type === 'page' && t.url.includes('localhost:8000'));
+      hostTarget = list.find((t) => t.type === 'page' && t.url.indexOf(PAGE) === 0);
     } catch (_) {}
     await sleep(250);
   }
@@ -74,8 +75,11 @@ async function main() {
   await host.evalJS('document.querySelector("[data-action=newgame]").click()');
   assert(await has('choose a mode'), '1. mode picker shows on setup');
 
-  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Mario";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=addname]").click();})()');
-  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Luigi";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=addname]").click();})()');
+  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Mario";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
+  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Luigi";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
+  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Wario";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelectorAll("[data-action=pickdot]")[1].click();})()');
+  assert(await host.evalJS('document.getElementById("pname").value === "Wario"'), '3c. picking a color keeps a name you typed');
+  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="";i.dispatchEvent(new Event("input", { bubbles: true }));})()');
   await host.evalJS('document.querySelector("[data-action=start]").click()');
   assert(await host.evalJS('document.querySelectorAll(".die").length === 5'), '2. in-person game starts with 5 settable dice');
   assert(await host.evalJS('!document.querySelector("[data-action=roll]")'), '3. in-person: dice OFF (no roll button)');
@@ -119,8 +123,8 @@ async function main() {
   await host.evalJS('document.querySelector("[data-action=qr]").click()');
   assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6g. QR toggle restores it');
 
-  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Peach";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=addname]").click();})()');
-  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Daisy";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=addname]").click();})()');
+  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Peach";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
+  await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Daisy";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
   await host.evalJS('document.querySelector("[data-action=start]").click()');
   assert(await host.evalJS('document.querySelector("button[data-action=roll]") !== null'), '6b. online game started, roll available');
   assert((await hostActive()) === 'peach', '6c. Peach (host seat) is up first');
@@ -136,7 +140,7 @@ async function main() {
       assert(await guest.evalJS('!!document.getElementById("you-name")'), '7b. guest sees the Your Seat bar');
 
       // RENAME self
-      await guest.evalJS('(function(){var i=document.getElementById("you-name");i.value="R2D2";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=yourename]").click();})()');
+      await guest.evalJS('(function(){var i=document.getElementById("you-name");i.value="R2D2";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=yourename]").click();})()');
       await waitFor(host.evalJS, 'document.querySelector("#app").innerText.toLowerCase().includes("r2d2")', 10000, 'host shows guest rename');
       assert(true, '8. guest renames themself (host table updates)');
 
@@ -217,4 +221,4 @@ async function main() {
   else console.log('SMOKE PASSED — in-person + online + gated live play + persistent Hall');
 }
 
-main().catch((e) => { console.error('SMOKE ERR:', e); process.exit(1); });
+main().catch((e) => { console.error('SMOKE ERR:', e); try { chrome && chrome.kill(); } catch (_) {} process.exit(1); });
