@@ -500,6 +500,18 @@ function startTurn(from) {
       return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.indexOf('.local') !== -1;
     } catch (e) { return false; }
   }
+  // What good is an invite address from this origin? 'none' (file://, nothing
+  // to share), 'loopback' (http://localhost — only this device can open it),
+  // 'lan' (plain-http private address — works for friends on the same Wi-Fi),
+  // 'public' (an https host — works for anyone).
+  function shareScope() {
+    try {
+      if (isFileLocal() || !baseHref()) return 'none';
+      if (window.location.protocol === 'https:') return 'public';
+      if (isLoopback()) return 'loopback';
+      return window.location.hostname ? 'lan' : 'loopback';
+    } catch (e) { return 'none'; }
+  }
   function copyText(text) {
     var done = function () {};
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -616,34 +628,41 @@ function startTurn(from) {
 
   function roomBox() {
     if (!isHost) return '';
-    var unusable = isFileLocal() || !baseHref();
+    var scope = shareScope();
     var hint = 'Send the invite link — or the code above — to friends. They join on any device, no sign-up.';
     var guide = '';
-    if (unusable) {
+    if (scope === 'none') {
       hint = 'You opened the app straight from disk, so there is no web address to share yet. Cost: one command.';
       guide = '<code class="serve-cmd">python3 -m http.server 8000</code>' +
         '<p class="room-hint">Then reopen on this Mac as <b>http://localhost:8000</b>, and on your phone open <b>http://&lt;this-Macs-network-address&gt;:8000</b> — same Wi-Fi. Both must stay on that page; the invite link below then works.</p>';
-    } else if (isLoopback()) {
-      hint = '&quot;localhost&quot; only means this Mac. Joiners need your computer\'s network address — reopen as <b>http://&lt;your-IP&gt;:8000</b>, then share the invite below.';
+    } else if (scope === 'loopback') {
+      hint = '&quot;localhost&quot; only means this Mac — a friend\u2019s phone cannot open it, so you get no public share button here.';
+      guide = '<p class="room-hint">Reopen as <b>http://&lt;your-IP&gt;:8000</b> (then the QR &amp; link are for the same Wi-Fi), or create the room on your <b>published site</b>, and the invite works for anyone.</p>';
+    } else if (scope === 'lan') {
+      hint = 'Same-Wi-Fi link. Friends anywhere else need the published site instead.';
     }
     return '<div class="plate room-box"><div class="section-bar">Your Room Is Live</div>' +
       (!myPeerId
         ? '<p class="room-code" aria-busy="true">Connecting…</p>'
         : '<p class="room-code">' + esc(myPeerId) + '</p>') +
       '<p class="room-hint">' + hint + '</p>' + guide +
-      shareCluster(unusable) +
+      shareCluster(scope) +
       '</div>';
   }
 
   // The invite travels two ways — a tap-to-join link, or a QR to scan from a
   // *different* screen. Smart placement: phones can't photograph their own
   // screen, so a phone opens with the Share Sheet first and tucks the QR away.
-  function shareCluster(unusable) {
-    if (unusable) {
+  function shareCluster(scope) {
+    if (scope === 'none') {
       return '<button type="button" class="btn btn-amber btn-block" data-action="copy" disabled aria-disabled="true">Copy Invite Link</button>';
     }
     if (!myPeerId) {
       return '<button type="button" class="btn btn-amber btn-block" data-action="copy" disabled aria-disabled="true">Connecting…</button>';
+    }
+    if (scope === 'loopback') {
+      return '<div class="share-row"><button type="button" class="btn btn-amber" data-action="copy">Copy Link (this device only)</button></div>' +
+        '<p class="room-hint">No QR here: your invite is a &quot;localhost&quot; address, so a scanned phone would just fail to reach it. Reopen at your network IP or use the published site.</p>';
     }
     var phone = isPhoneLike();
     var out = '<div class="share-row">' +

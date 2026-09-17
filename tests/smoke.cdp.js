@@ -114,14 +114,22 @@ async function main() {
     code = (await host.evalJS('document.querySelector(".room-code").textContent')).trim();
   } catch (e) { console.log('SKIP  6. public peer broker slow — continuing as host-local'); }
   assert(await host.evalJS('!!document.querySelector("[data-action=copy]")'), '6a. host room controls shown (invite link)');
-  assert(await host.evalJS('!!document.querySelector("[data-action=share]") && !!document.querySelector("[data-action=copy]")'),
-    '6d. share cluster shows both Share and Copy Link');
-  assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6e. desktop host sees the QR by default');
-  await host.evalJS('document.querySelector("[data-action=qr]").click()');
-  assert(await host.evalJS('!document.querySelector(".qr-frame svg") && document.querySelector("[data-action=qr]").innerText.toLowerCase().indexOf("show") !== -1'),
-    '6f. QR toggle hides it (button flips to Show QR)');
-  await host.evalJS('document.querySelector("[data-action=qr]").click()');
-  assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6g. QR toggle restores it');
+  const PUBLIC_ORIGIN = PAGE.indexOf('localhost') === -1 && PAGE.indexOf('127.0.0.1') === -1;
+  if (PUBLIC_ORIGIN) {
+    assert(await host.evalJS('!!document.querySelector("[data-action=share]") && !!document.querySelector("[data-action=copy]")'),
+      '6d. share cluster shows both Share and Copy Link');
+    assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6e. host sees the QR by default on a public page');
+    await host.evalJS('document.querySelector("[data-action=qr]").click()');
+    assert(await host.evalJS('!document.querySelector(".qr-frame svg") && document.querySelector("[data-action=qr]").innerText.toLowerCase().indexOf("show") !== -1'),
+      '6f. QR toggle hides it (button flips to Show QR)');
+    await host.evalJS('document.querySelector("[data-action=qr]").click()');
+    assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6g. QR toggle restores it');
+  } else {
+    assert(await host.evalJS('!document.querySelector("[data-action=share]") && !document.querySelector(".qr-frame svg")'),
+      '6d. loopback host hints honestly: no Share sheet, no dead localhost QR');
+    assert(await host.evalJS('(document.querySelector("[data-action=copy]")||{innerText:""}).innerText.toLowerCase().indexOf("device only") !== -1'),
+      '6e. loopback host labels the copy as this-device-only');
+  }
 
   await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Peach";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
   await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Daisy";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
