@@ -73,6 +73,24 @@
     }
     return true;
   }
+  // Live guest connections, keyed by device uid.
+  function liveUids() {
+    var o = {}, i;
+    for (i = 0; i < guestConns.length; i++) if (guestConns[i].open) o[guestConns[i]._uid] = true;
+    return o;
+  }
+  // How many seats are held by connected friends right now (online lobby count).
+  function guestCount() {
+    var m = liveUids(), i, c = 0;
+    for (i = 0; i < state.players.length; i++) if (m[state.players[i].uid]) c++;
+    return c;
+  }
+  // Seats no live friend owns: the host's own seats, or a seat whose player left.
+  function hostSeatCount() {
+    var m = liveUids(), i, c = 0;
+    for (i = 0; i < state.players.length; i++) if (!m[state.players[i].uid]) c++;
+    return c;
+  }
   // May THIS device act on the current table right now? (each player rolls their own turn)
   function myTurn() {
     if (!remoteMode) return true;
@@ -135,6 +153,15 @@
         c.on('data', function (msg) { onRemote(msg, c); });
         c.on('close', function () {
           guestConns = guestConns.filter(function (x) { return x !== c; });
+          if (remoteMode && isHost && c._uid && state.phase !== 'menu') {
+            var gi = indexOfUid(c._uid);
+            if (gi >= 0 && state.players[gi]) {
+              state.players[gi].away = true;
+              var awayName = state.players[gi].name;
+              commit();
+              flash((awayName ? awayName + ' LEFT THE ROOM' : 'A PLAYER LEFT THE ROOM') + ' — FREE THEIR SEAT TO CONTINUE');
+            }
+          }
         });
         guestConns.push(c);
       });
@@ -197,6 +224,12 @@
       var jnm = String(msg.name || '').trim().slice(0, 20) || 'GUEST';
       var jcol = normalizeColor(msg.color) || PALETTE[Math.floor(Math.random() * PALETTE.length)].h;
       conn._uid = juid;
+      // a dropped guest coming back frees their stale away seat (no duplicates)
+      for (var gi = 0; gi < state.players.length; gi++) {
+        if (state.players[gi] && state.players[gi].uid === juid && state.players[gi].away) {
+          state.players.splice(gi, 1); break;
+        }
+      }
       state.players.push({ uid: juid, name: jnm, color: jcol, card: newCard() });
       commit(); return;
     }
@@ -377,6 +410,25 @@ function startTurn(from) {
       commit();
     },
 
+    kick: function () {
+      // hosts free a freed seat so rotation can't stall on someone who left
+      if (!authority() || !isHost) return;
+      var i = Number(this.dataset.i);
+      var p = state.players[i];
+      if (!p || !p.away) return;
+      var nm = p.name;
+      delete state.players[i];
+      state.players = state.players.filter(Boolean);
+      if (state.phase === 'game' && state.turn) {
+        if (state.turn.p === i) startTurn(i - 1);
+        else {
+          if (state.turn.p > i) state.turn.p--;
+          commit();
+        }
+      } else { commit(); }
+      flash((nm ? nm + ' LEFT THE ROOM' : 'SEAT FREED') + ' — PLAY ON');
+    },
+
     pickdot: function () {
       state.ui.dot = Number(this.dataset.i);
       commit();
@@ -384,6 +436,10 @@ function startTurn(from) {
 
     start: function () {
       if (!authority()) return;
+      if (state.mode === 'online') {
+        if (hostSeatCount() === 0) { flash('ADD YOUR OWN SEAT FIRST'); return; }
+        if (guestCount() === 0) { flash('WAIT FOR A FRIEND TO JOIN — SEND THE INVITE'); return; }
+      }
       if (!state.players.length) { flash('ADD A PLAYER FIRST'); return; }
       startTurn(-1);
     },
@@ -629,6 +685,7 @@ function startTurn(from) {
   function roomBox() {
     if (!isHost) return '';
     var scope = shareScope();
+    var wait = guestCount();
     var hint = 'Send the invite link — or the code above — to friends. They join on any device, no sign-up.';
     var guide = '';
     if (scope === 'none') {
@@ -641,10 +698,14 @@ function startTurn(from) {
     } else if (scope === 'lan') {
       hint = 'Same-Wi-Fi link. Friends anywhere else need the published site instead.';
     }
-    return '<div class="plate room-box"><div class="section-bar">Your Room Is Live</div>' +
+    var lobby = wait > 0
+      ? '<p class="lobby-status ready">' + wait + (wait === 1 ? ' friend' : ' friends') + ' in the room — ready to start.</p>'
+      : '<p class="lobby-status waiting">Waiting for players \u2014 send the invite to open the table.</p>';
+    return '<div class="plate room-box lobby"><div class="section-bar">Your Room Is Live</div>' +
       (!myPeerId
         ? '<p class="room-code" aria-busy="true">Connecting…</p>'
         : '<p class="room-code">' + esc(myPeerId) + '</p>') +
+      lobby +
       '<p class="room-hint">' + hint + '</p>' + guide +
       shareCluster(scope) +
       '</div>';
@@ -772,6 +833,7 @@ function startTurn(from) {
 
   function setup() {
     var localCrew = '';
+    var onlineLocked = state.mode === 'online' && (guestCount() === 0 || hostSeatCount() === 0);
     if (authority()) {
       localCrew = '<div class="name-field"><input id="pname" class="text-input" maxlength="20" placeholder="Player name" value="' + esc(pendingInput.pname || '') + '" autocomplete="off"></div>' +
         '<div class="color-row">' + colorDots() + '</div>' +
@@ -790,7 +852,10 @@ function startTurn(from) {
       '<div class="player-list">' + playerChips() + '</div>' +
       '<p class="empty-hint">' + (state.players.length ? '' : (state.mode === 'online' ? 'No players yet — host, add your seat, and share your code above.' : 'No players yet — add at least one.')) + '</p>' +
       '<div id="errmsg" class="error-msg" role="alert"></div>' +
-      (authority() ? '<button type="button" class="btn btn-signal btn-block" data-action="start">Start Game</button>' : '<button type="button" class="btn btn-signal btn-block" data-action="join" disabled aria-disabled="true">Waiting for the host to start…</button>') +
+      (authority()
+        ? '<button type="button" class="btn btn-signal btn-block" data-action="start"' + (onlineLocked ? ' disabled aria-disabled="true"' : '') + '>' +
+          (onlineLocked ? 'Start Game — Waiting For A Friend To Join' : 'Start Game') + '</button>'
+        : '<button type="button" class="btn btn-signal btn-block" data-action="join" disabled aria-disabled="true">Waiting for the host to start…</button>') +
       '<button type="button" class="btn btn-carbon btn-block" data-action="menu">Back to Menu</button></div>' +
       guestBox;
   }
@@ -814,8 +879,13 @@ function startTurn(from) {
     for (var i = 0; i < state.players.length; i++) {
       var pl = state.players[i];
       roster += '<span class="who' + (i === t.p ? ' now' : '') + (hasOpen(pl) ? '' : ' done') +
+        (isHost && pl.away ? ' away' : '') +
         '" style="background:' + pl.color + '"><span class="chwname">' + esc(pl.name) +
-        (i === selfIndex ? ' <em class="youd">YOU</em>' : '') + '</span>' + pips(pl) + '</span>';
+        (i === selfIndex ? ' <em class="youd">YOU</em>' : '') + '</span>' + pips(pl) +
+        (isHost && pl.away
+          ? '<button type="button" class="rm" data-action="kick" data-i="' + i +
+            '" aria-label="Free ' + esc(pl.name) + '\u2019s seat — they left the room">×</button>'
+          : '') + '</span>';
     }
 
     var diceHTML = '';

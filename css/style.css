@@ -332,6 +332,30 @@ body {
 
 /* ---------- room code / invite ---------- */
 .room-box { margin-bottom: 14px; }
+
+/* online lobby: the room plate reads as a waiting room, not another form */
+.room-box.lobby { border-color: var(--signal); box-shadow: inset 0 1px 0 var(--highlight), 0 3px 0 var(--signal); }
+.room-box.lobby .section-bar { color: var(--carbon); background: var(--signal); border-radius: 3px; padding: 3px 8px; margin-bottom: 8px; }
+
+.lobby-status {
+  font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  padding: 6px 9px; border-radius: 3px; margin: 8px 0;
+}
+.lobby-status.waiting {
+  color: var(--surface); background: var(--chrome);
+  border-left: 4px solid var(--signal);
+}
+.lobby-status.ready {
+  color: var(--carbon); background: #cfe6b8; border: 1px solid #7fae5a;
+}
+.lobby-status.ready strong, .lobby-status.waiting strong { display: block; }
+
+.roster .who.away { opacity: .6; filter: grayscale(.7); }
+.roster .who .rm {
+  border: 0; background: rgba(0,0,0,.35); color: #fff; cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 2px 6px; border-radius: 2px;
+}
+.roster .who .rm:hover, .roster .who .rm:focus { background: var(--primary); }
 .room-code {
   font-family: 'Arial Black', Arial, sans-serif; font-size: 18px; letter-spacing: 2px;
   color: var(--carbon); background: var(--surface); border: 1px solid var(--chrome);

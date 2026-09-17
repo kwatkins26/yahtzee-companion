@@ -133,16 +133,23 @@ async function main() {
 
   await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Peach";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
   await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Daisy";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
-  await host.evalJS('document.querySelector("[data-action=start]").click()');
-  assert(await host.evalJS('document.querySelector("button[data-action=roll]") !== null'), '6b. online game started, roll available');
-  assert((await hostActive()) === 'peach', '6c. Peach (host seat) is up first');
+  assert(await host.evalJS('(document.querySelector("[data-action=start]")||{}).disabled === true'),
+    '6h. Start is locked while the lobby waits for a friend');
+  assert(await host.evalJS('!!document.querySelector(".lobby-status.waiting")'),
+    '6j. lobby shows the waiting banner');
 
-  // ---- SCENARIO 3: friend joins over P2P, renames, recolors, only rolls their turn ----
+  // ---- SCENARIO 3: friend joins the LOBBY over P2P, then the game starts ----
   if (code) {
     try {
       const guestTarget = await (await fetch(`http://127.0.0.1:${PORT}/json/new?${encodeURIComponent(PAGE + '#j=' + encodeURIComponent(code))}`, { method: 'PUT' })).json();
       guest = await connectTab(guestTarget.webSocketDebuggerUrl);
-      await waitFor(guest.evalJS, 'document.querySelector("#app").innerText.toLowerCase().includes("peach")', 30000, 'guest receives host state');
+      await waitFor(guest.evalJS, 'document.querySelector("#app").innerText.toLowerCase().includes("peach")', 30000, 'guest lands in the host room');
+      assert(await host.evalJS('(document.querySelector("[data-action=start]")||{}).disabled === false'),
+        '6i. Start unlocks once a friend joins the lobby');
+      await host.evalJS('document.querySelector("[data-action=start]").click()');
+      assert(await host.evalJS('document.querySelector("button[data-action=roll]") !== null'), '6b. online game started, roll available');
+      assert((await hostActive()) === 'peach', '6c. Peach (host seat) is up first');
+
       const guestText = await guest.evalJS('document.querySelector("#app").innerText.toLowerCase()');
       assert(guestText.includes('peach'), '7. guest synced the host table (sees live game)');
       assert(await guest.evalJS('!!document.getElementById("you-name")'), '7b. guest sees the Your Seat bar');
@@ -213,7 +220,15 @@ async function main() {
     }
   }
 
-  if (!guest) { assert(await playFullGame(host.evalJS), '9. online game reaches final standings (host-only fallback)'); }
+  if (!guest) {
+    await host.evalJS('document.querySelector("nav [data-action=menu], header [data-action=menu], [data-action=menu]").click()');
+    await host.evalJS('document.querySelector("[data-action=newgame]").click()');
+    await host.evalJS('document.querySelector("[data-action=mode][data-mode=inperson]").click()');
+    await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Mario";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
+    await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Luigi";i.dispatchEvent(new Event("input", { bubbles: true }));document.querySelector("[data-action=addname]").click();})()');
+    await host.evalJS('document.querySelector("[data-action=start]").click()');
+    assert(await playFullGame(host.evalJS), '9. broker offline: in-person fallback game reaches final standings');
+  }
   else if (!coopDone) { console.log('SKIP   16b. online game did not conclude cleanly — riding the nav Menu instead'); }
 
   // persistence: the Hall on the host device spans both games (Mario from game 1)
