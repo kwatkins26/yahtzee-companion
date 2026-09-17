@@ -395,7 +395,7 @@ function startTurn(from) {
       prof.name = prof.name || Profiles.nick();
       Profiles.saveProfile(prof);
       state.ui.joinName = prof.name;
-      state.ui.pendingCode = code.trim();
+      state.ui.pendingCode = extractRoom(code);
       state.phase = 'joining';
       render();
       joinRoom(state.ui.pendingCode);
@@ -446,13 +446,35 @@ function startTurn(from) {
       state.phase = 'hall'; save(); render();
     },
 
+    share: function () {
+      if (isFileLocal() || !baseHref() || !myPeerId) {
+        flash('NO SHAREABLE ROOM FROM HERE — SEE THE HINT');
+        return;
+      }
+      var link = inviteLink();
+      if (navigator.share) {
+        navigator.share({ title: 'YAHTZEE 2001', text: 'Join my Yahtzee room', url: link })
+          .catch(function () { copyText(link); flash('INVITE LINK COPIED'); });
+      } else {
+        copyText(link);
+        flash('INVITE LINK COPIED');
+      }
+    },
+
+    qr: function () {
+      // undefined = let the device decide (desktop open, phone closed);
+      // the toggle then hard-pins the opposite of what's showing.
+      var cur = isPhoneLike() ? !!state.ui.showQR : state.ui.showQR !== false;
+      state.ui.showQR = !cur;
+      render();
+    },
+
     copy: function () {
-      if (isFileLocal() || !baseHref()) {
+      if (isFileLocal() || !baseHref() || !myPeerId) {
         flash('NO SHAREABLE LINK FROM FILE:// — SERVE THE FOLDER, SEE THE HINT');
         return;
       }
-      var link = baseHref() + '#j=' + encodeURIComponent(myPeerId);
-      copyText(link);
+      copyText(inviteLink());
       flash('INVITE LINK COPIED');
     }
   };
@@ -602,7 +624,64 @@ function startTurn(from) {
         ? '<p class="room-code" aria-busy="true">Connecting…</p>'
         : '<p class="room-code">' + esc(myPeerId) + '</p>') +
       '<p class="room-hint">' + hint + '</p>' + guide +
-      '<button type="button" class="btn btn-amber btn-block" data-action="copy"' + (myPeerId && !unusable ? '' : ' disabled aria-disabled="true"') + '>Copy Invite Link</button></div>';
+      shareCluster(unusable) +
+      '</div>';
+  }
+
+  // The invite travels two ways — a tap-to-join link, or a QR to scan from a
+  // *different* screen. Smart placement: phones can't photograph their own
+  // screen, so a phone opens with the Share Sheet first and tucks the QR away.
+  function shareCluster(unusable) {
+    if (unusable) {
+      return '<button type="button" class="btn btn-amber btn-block" data-action="copy" disabled aria-disabled="true">Copy Invite Link</button>';
+    }
+    if (!myPeerId) {
+      return '<button type="button" class="btn btn-amber btn-block" data-action="copy" disabled aria-disabled="true">Connecting…</button>';
+    }
+    var phone = isPhoneLike();
+    var out = '<div class="share-row">' +
+      '<button type="button" class="btn btn-amber" data-action="share">Share</button>' +
+      '<button type="button" class="btn btn-amber" data-action="copy">Copy Link</button></div>';
+    var qrVisible = phone ? !!state.ui.showQR : state.ui.showQR !== false;
+    if (qrVisible) {
+      out += '<div class="qr-block">' + qrFor(inviteLink()) +
+        '<button type="button" class="btn btn-carbon btn-block" data-action="qr">Hide QR</button></div>' +
+        '<p class="room-hint">' + (phone ? 'This is for another device — your own camera can\u2019t scan your own screen. Tap Share to send the link instead.' : 'Phone users: point your camera at the QR to jump straight in.') + '</p>';
+    } else {
+      out += '<button type="button" class="btn btn-carbon btn-block" data-action="qr">Show QR For Another Device</button>' +
+        '<p class="room-hint">Your own camera can\u2019t scan your own screen — tap Share to send the link instead.</p>';
+    }
+    return out;
+  }
+
+  function inviteLink() {
+    return baseHref() + '#j=' + encodeURIComponent(myPeerId);
+  }
+
+  // Be kind: if someone pastes a full invite URL into the code box, fish the
+  // room token out of it instead of failing.
+  function extractRoom(str) {
+    var m = String(str || '').match(/(?:#j=|[?&]j=)([^&\s/#]+)/);
+    if (m) { try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; } }
+    return String(str || '').trim();
+  }
+
+  function qrFor(link) {
+    if (typeof qrcode !== 'function') return '<p class="room-hint">QR engine unavailable.</p>';
+    var q = qrcode(0, 'M');
+    q.addData(link);
+    q.make();
+    return '<div class="qr-frame" role="img" aria-label="QR invite code — scan with a phone camera inside the app link">' +
+      q.createSvgTag(4, 8) + '</div>';
+  }
+
+  function isPhoneLike() {
+    try {
+      var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      var touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+      var narrow = window.innerWidth < 720 || (window.screen && window.screen.width < 720);
+      return coarse && touch && narrow;
+    } catch (e) { return false; }
   }
 
   function joinBox() {
@@ -654,6 +733,14 @@ function startTurn(from) {
     return chips;
   }
 
+  // 13-turn tracker: a row of pips, lit with every box the player has closed.
+  function pips(pl) {
+    var n = E.filled(cardOf(pl)), s = '', k;
+    for (k = 0; k < 13; k++) s += '<i' + (k < n ? ' class="on"' : '') + '></i>';
+    return '<span class="pjips" title="' + n + ' of 13 turns used"><span class="pjrow">' + s +
+      '</span><em class="pjlabel">' + n + '/13</em></span>';
+  }
+
   function setup() {
     var localCrew = '';
     if (authority()) {
@@ -698,7 +785,8 @@ function startTurn(from) {
     for (var i = 0; i < state.players.length; i++) {
       var pl = state.players[i];
       roster += '<span class="who' + (i === t.p ? ' now' : '') + (hasOpen(pl) ? '' : ' done') +
-        '" style="background:' + pl.color + '">' + esc(pl.name) + (i === selfIndex ? ' <em class="youd">YOU</em>' : '') + '</span>';
+        '" style="background:' + pl.color + '"><span class="chwname">' + esc(pl.name) +
+        (i === selfIndex ? ' <em class="youd">YOU</em>' : '') + '</span>' + pips(pl) + '</span>';
     }
 
     var diceHTML = '';
@@ -714,8 +802,8 @@ function startTurn(from) {
       rollRow = '<div class="roll-row"><button type="button" class="btn btn-amber" data-action="roll"' +
         ((t.rolls >= 3 || !actable) ? ' disabled aria-disabled="true"' : '') + '>Roll Again (' + t.rolls + '/3)</button></div>';
     }
-    var diceBadge = inPerson ? '<span class="active-turn" style="color:' + p.color + '">' + esc(p.name) + ' · SET ROLL</span>'
-      : '<span class="active-turn" style="color:' + p.color + '">' + esc(p.name) + ' · Roll ' + t.rolls + '/3</span>';
+    var diceBadge = inPerson ? '<span class="active-turn" style="color:' + p.color + '">' + esc(p.name) + ' · SET ROLL · TURN ' + E.turnNumber(card) + ' OF 13</span>'
+      : '<span class="active-turn" style="color:' + p.color + '">' + esc(p.name) + ' · Roll ' + t.rolls + '/3 · TURN ' + E.turnNumber(card) + ' OF 13</span>';
 
     return (remoteMode && !isHost ? youBar() : '') +
       '<div class="roster">' + roster + '</div>' +
@@ -743,7 +831,8 @@ function startTurn(from) {
       h += '<div class="row-plate pos' + (i === 0 ? ' winner' : '') + '"><span class="rank">' + (i + 1) + '</span>' +
         '<span class="swatch" style="background:' + p.color + '"></span>' +
         '<span class="nm">' + esc(p.name) + '</span>' +
-        '<span class="gt">' + g.grand + '</span></div>';
+        '<span class="gt">' + g.grand + '</span>' +
+        '<span class="gt ok">' + E.filled(cardOf(p)) + '/13</span></div>';
     }
     h += '<div id="errmsg" class="error-msg" role="alert"></div>' +
       '<button type="button" class="btn btn-signal btn-block" data-action="newgame">New Game</button>' +

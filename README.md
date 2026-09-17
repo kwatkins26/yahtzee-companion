@@ -14,7 +14,8 @@ This is the modern rebuild of the original Kivy/Python `yahtzee_companion` proje
 - **Two ways to play** — choose on the New Game screen:
   - **In Person** — real dice at the table. The on-screen dice are *off*: tap each to set the value from your physical roll. No roll button, no rng.
   - **Online** — dice *on*. You roll and hold the shared table (Roll again up to 3/3), and friends play from anywhere
-- **Serverless online rooms** — host a room, send the invite link or room code, friends join on any device over WebRTC (PeerJS) — no account, no server to run. Scores sync live both ways
+- **Serverless online rooms** — host a room, share by invite link, system share sheet, or QR code; friends join on any device over WebRTC (PeerJS) — no account, no server to run. Scores sync live both ways. Placement is device-aware: a phone leads with the Share Sheet (a phone camera can't scan its own screen), a desktop/tablet leads with the QR
+- **13-turn tracker** — every player's roster chip carries a 13-pip progress track (N/13), and the active player's header reads `TURN N OF 13` as the game unrolls
 - **Suggested scores** — the best open box highlights in amber; open rows show their current suggested value
 - **Zero-safe** — if you have nowhere to score, tap any open row (even at 0) to move on
 - **Persistence** — all scores save automatically to `localStorage`; close the tab, come back, continue

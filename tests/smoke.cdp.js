@@ -5,7 +5,9 @@
 const { spawn } = require('child_process');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PORT = 9233;
-const PAGE = 'file:///Users/personalspace/Documents/AppProjects/2024/YahtzeeCompanionApp/yahtzee_web/index.html';
+// Served over http so the host's share cluster (invite link + QR) is live —
+// from file:// the room can't produce a shareable address by design.
+const PAGE = 'http://localhost:8000/';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,7 +57,7 @@ async function main() {
   for (let i = 0; i < 60 && !hostTarget; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
-      hostTarget = list.find((t) => t.type === 'page' && t.url.includes('yahtzee_web'));
+      hostTarget = list.find((t) => t.type === 'page' && t.url.includes('localhost:8000'));
     } catch (_) {}
     await sleep(250);
   }
@@ -77,6 +79,10 @@ async function main() {
   await host.evalJS('document.querySelector("[data-action=start]").click()');
   assert(await host.evalJS('document.querySelectorAll(".die").length === 5'), '2. in-person game starts with 5 settable dice');
   assert(await host.evalJS('!document.querySelector("[data-action=roll]")'), '3. in-person: dice OFF (no roll button)');
+  assert(await host.evalJS('document.querySelector(".active-turn").innerText.toLowerCase().indexOf("turn 1 of 13") !== -1'),
+    '3a. turn tracker: fresh card reads TURN 1 OF 13');
+  assert(await host.evalJS('Array.prototype.every.call(document.querySelectorAll(".pjlabel"), function(b){return b.innerText.trim() === "0/13";})'),
+    '3b. turn tracker: every roster chip starts at 0/13');
 
   const before = await host.evalJS('document.querySelector(".die").getAttribute("aria-label")');
   await host.evalJS('document.querySelector(".die").click()');
@@ -84,11 +90,14 @@ async function main() {
   assert(before !== after, '4. in-person: tapping a die sets its value (label changed)');
 
   assert(await playFullGame(host.evalJS), '5. in-person full game reaches final standings');
+  assert(await host.evalJS('document.querySelectorAll(".gt.ok").length === 2'), '5a. standings show the 13/13 completion check for both players');
+  assert(await host.evalJS('Array.prototype.every.call(document.querySelectorAll(".gt.ok"), function(b){return b.innerText.trim() === "13/13";})'),
+    '5b. standings read 13/13 — the full 13 turns');
 
   // ---- HALL: the in-person game just recorded stats ----
   await host.evalJS('document.querySelector("[data-action=hall]").click()');
-  assert(await has('career leaderboard'), '5b. The Hall opens');
-  assert(await has('mario'), '5c. in-person seats are remembered in the Hall ledger');
+  assert(await has('career leaderboard'), '5c. The Hall opens');
+  assert(await has('mario'), '5d. in-person seats are remembered in the Hall ledger');
 
   // ---- SCENARIO 2: ONLINE as host (dice ON) ----
   await host.evalJS('window.confirm = function () { return true; };'); // headless auto-dismisses dialogs as false
@@ -101,6 +110,14 @@ async function main() {
     code = (await host.evalJS('document.querySelector(".room-code").textContent')).trim();
   } catch (e) { console.log('SKIP  6. public peer broker slow — continuing as host-local'); }
   assert(await host.evalJS('!!document.querySelector("[data-action=copy]")'), '6a. host room controls shown (invite link)');
+  assert(await host.evalJS('!!document.querySelector("[data-action=share]") && !!document.querySelector("[data-action=copy]")'),
+    '6d. share cluster shows both Share and Copy Link');
+  assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6e. desktop host sees the QR by default');
+  await host.evalJS('document.querySelector("[data-action=qr]").click()');
+  assert(await host.evalJS('!document.querySelector(".qr-frame svg") && document.querySelector("[data-action=qr]").innerText.toLowerCase().indexOf("show") !== -1'),
+    '6f. QR toggle hides it (button flips to Show QR)');
+  await host.evalJS('document.querySelector("[data-action=qr]").click()');
+  assert(await host.evalJS('!!document.querySelector(".qr-frame svg")'), '6g. QR toggle restores it');
 
   await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Peach";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=addname]").click();})()');
   await host.evalJS('(function(){var i=document.getElementById("pname");i.value="Daisy";i.dispatchEvent(new Event("input"));document.querySelector("[data-action=addname]").click();})()');

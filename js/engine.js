@@ -123,6 +123,21 @@
     return true;
   }
 
+  // How many of the 13 boxes a card has closed (a "+100" joker re-score of the
+  // Yahtzee box does not move the needle — it's still the same box).
+  function filled(card) {
+    var cats = UPPER.concat(LOWER), out = 0, i;
+    for (i = 0; i < cats.length; i++) {
+      if (card[cats[i]] && card[cats[i]].locked) out++;
+    }
+    return out;
+  }
+
+  // Which of the 13 turns the player is on next (filled + 1, capped at 13).
+  function turnNumber(card) {
+    return Math.min(filled(card) + 1, UPPER.length + LOWER.length);
+  }
+
   return {
     UPPER: UPPER.slice(),
     LOWER: LOWER.slice(),
@@ -137,6 +152,8 @@
     yahtzeeCount: yahtzeeCount,
     isYahtzee: isYahtzee,
     rollDice: rollDice,
-    cardFull: cardFull
+    cardFull: cardFull,
+    filled: filled,
+    turnNumber: turnNumber
   };
 });

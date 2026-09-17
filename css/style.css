@@ -234,12 +234,23 @@ body {
 .active-turn { color: var(--carbon); font-size: 12px; font-weight: 700; }
 .roster { display: flex; gap: 4px; flex-wrap: wrap; }
 .roster .who {
-  font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
-  padding: 6px 8px; border-radius: 2px; color: var(--surface);
+  display: inline-flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  padding: 5px 8px 4px; border-radius: 2px; color: var(--surface);
   background: var(--muted);
 }
+.roster .who .chwname { line-height: 1.15; }
 .roster .who.now { background: var(--carbon); box-shadow: 0 2px 0 var(--chrome); }
-.roster .who.done { opacity: .5; }
+.roster .who.done { opacity: .55; }
+
+/* 13-turn tracker: one pip per closed box, in the player's chip color */
+.pjips { display: inline-flex; align-items: center; gap: 3px; }
+.pjrow { display: inline-flex; gap: 1.5px; }
+.pjrow i { width: 4px; height: 4px; min-width: 4px; border-radius: 50%; background: rgba(255, 255, 255, .28); }
+.pjrow i.on { background: #fff; box-shadow: 0 0 3px rgba(255, 255, 255, .85); }
+.pjlabel { font-style: normal; font-size: 8px; letter-spacing: 0; color: rgba(255, 255, 255, .85); }
+.card .head .active-turn { max-width: 62%; text-align: right; line-height: 1.3; }
+.gt.ok { color: #3f9c4f; font-weight: 700; }
 
 .score-row {
   display: flex; align-items: center; width: 100%;
@@ -334,6 +345,16 @@ body {
   color: var(--ice); background: var(--carbon); border: 1px solid var(--chrome);
   border-radius: 4px; padding: 8px 10px; margin: 8px 0 2px; overflow-wrap: anywhere;
 }
+
+/* share cluster: link + QR, placement-aware per device */
+.share-row { display: flex; gap: 8px; margin-top: 8px; }
+.share-row .btn { flex: 1; }
+.qr-block { margin-top: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.qr-frame {
+  background: #fff; padding: 10px; border-radius: 6px;
+  border: 1px solid var(--chrome); box-shadow: 0 2px 0 rgba(0, 0, 0, .35);
+}
+.qr-frame svg { display: block; }
 
 /* identity bar (guests) */
 .you-bar { margin: 0 0 12px; }

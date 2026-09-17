@@ -72,4 +72,24 @@ assert.strictEqual(E.yahtzeeCount(mkCard(50)), 1);
 assert.strictEqual(E.yahtzeeCount(mkCard(150)), 2);
 assert.strictEqual(E.yahtzeeCount(mkCard(850)), 9);
 
+// filled / turnNumber: the 13-turn tracker's money numbers.
+function mkFresh() {
+  var card = {}, i, cats = E.UPPER.concat(E.LOWER);
+  for (i = 0; i < cats.length; i++) card[cats[i]] = { v: 0, locked: false };
+  return card;
+}
+assert.strictEqual(E.filled(mkFresh()), 0, 'fresh card has zero turns used');
+assert.strictEqual(E.turnNumber(mkFresh()), 1, 'first turn is 1 of 13');
+var one = mkFresh(); one.Ones = { v: 3, locked: true };
+assert.strictEqual(E.filled(one), 1);
+assert.strictEqual(E.turnNumber(one), 2);
+var twelve = mkFresh();
+['Ones', 'Twos', 'Threes', 'Fours', 'Fives', 'Sixes', '3 of a Kind', '4 of a Kind', 'Full House', 'Small Straight', 'Large Straight', 'Chance']
+  .forEach(function (c) { twelve[c] = { v: 5, locked: true }; });
+assert.strictEqual(E.filled(twelve), 12, 'twelve boxes closed');
+assert.strictEqual(E.turnNumber(twelve), 13, 'only the Yahtzee box remains — turn 13 of 13');
+assert.strictEqual(E.turnNumber(mkCard(150)), 13, 'a +100 re-score of Yahtzee does not add a 14th turn');
+assert.strictEqual(E.filled(mkCard(150)), 13, 'joker bonus counts the same single Yahtzee box');
+assert.strictEqual(E.cardFull(mkCard(150)), true, 'joker-boosted card stays full');
+
 console.log('engine OK — all assertions passed');
